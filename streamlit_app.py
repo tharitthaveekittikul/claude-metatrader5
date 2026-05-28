@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -111,8 +112,5 @@ try:
 except FileNotFoundError:
     st.info('No trade log yet — log appears after first cycle.')
 
-# Auto-refresh every 10 seconds
-st.markdown(
-    '<meta http-equiv="refresh" content="10">',
-    unsafe_allow_html=True,
-)
+time.sleep(1)
+st.rerun()
