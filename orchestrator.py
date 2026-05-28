@@ -68,6 +68,11 @@ def run_symbol(symbol: str, client: MT5Client, config: dict):
             config['trade_history']['lookback_hours'],
         )
 
+        max_pending = config['risk'].get('max_pending_per_symbol', 3)
+        if len(pending) >= max_pending:
+            logger.info(f"{symbol}: skipping — {len(pending)}/{max_pending} pending orders already open")
+            return
+
         prompt = build_prompt(
             symbol=symbol, price=price,
             h1_indicators=h1_ind, m15_indicators=m15_ind,
@@ -78,11 +83,11 @@ def run_symbol(symbol: str, client: MT5Client, config: dict):
 
         raw = call_claude(prompt, config['claude']['model'], config['claude']['timeout_seconds'])
         decision = parse_response(raw['text'])
-        usage = {k: raw[k] for k in ('cost_usd', 'input_tokens', 'output_tokens')}
+        usage = {k: raw[k] for k in ('cost_usd', 'input_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'output_tokens')}
 
         logger.info(
             f"{symbol}: {decision.order_type} CONF={decision.confidence} "
-            f"tokens={usage['input_tokens']}in/{usage['output_tokens']}out "
+            f"tokens={usage['input_tokens']}in/{usage['cache_read_tokens']}cr/{usage['cache_creation_tokens']}cw/{usage['output_tokens']}out "
             f"cost=${usage['cost_usd']:.4f} REASON={decision.reason}"
         )
 

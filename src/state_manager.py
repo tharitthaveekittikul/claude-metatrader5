@@ -34,11 +34,19 @@ def update_symbol_state(
         'updated_at': now,
     }
     if usage:
-        totals = state.get('totals', {'cost_usd': 0.0, 'input_tokens': 0, 'output_tokens': 0, 'calls': 0})
-        totals['cost_usd']      += usage.get('cost_usd', 0.0)
-        totals['input_tokens']  += usage.get('input_tokens', 0)
-        totals['output_tokens'] += usage.get('output_tokens', 0)
-        totals['calls']         += 1
+        totals = state.get('totals', {})
+        totals.setdefault('cost_usd', 0.0)
+        totals.setdefault('input_tokens', 0)
+        totals.setdefault('cache_read_tokens', 0)
+        totals.setdefault('cache_creation_tokens', 0)
+        totals.setdefault('output_tokens', 0)
+        totals.setdefault('calls', 0)
+        totals['cost_usd']              += usage.get('cost_usd', 0.0)
+        totals['input_tokens']          += usage.get('input_tokens', 0)
+        totals['cache_read_tokens']     += usage.get('cache_read_tokens', 0)
+        totals['cache_creation_tokens'] += usage.get('cache_creation_tokens', 0)
+        totals['output_tokens']         += usage.get('output_tokens', 0)
+        totals['calls']                 += 1
         state['totals'] = totals
         history = state.get('call_history', [])
         history.append({
@@ -48,6 +56,8 @@ def update_symbol_state(
             'confidence': decision.get('confidence', ''),
             'cost_usd': usage.get('cost_usd', 0.0),
             'input_tokens': usage.get('input_tokens', 0),
+            'cache_read_tokens': usage.get('cache_read_tokens', 0),
+            'cache_creation_tokens': usage.get('cache_creation_tokens', 0),
             'output_tokens': usage.get('output_tokens', 0),
             'status': result.get('status', ''),
         })
