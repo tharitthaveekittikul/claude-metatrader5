@@ -10,6 +10,7 @@ st.set_page_config(page_title='Claude MT5 Bot', layout='wide')
 st.title('Claude MT5 Trading Bot')
 
 
+@st.cache_data(ttl=30)
 def load_state() -> dict:
     if not os.path.exists('state.json'):
         return {'symbols': {}, 'last_cycle': None}
@@ -17,6 +18,7 @@ def load_state() -> dict:
         return json.load(f)
 
 
+@st.cache_data(ttl=30)
 def load_config() -> dict:
     with open('config.yaml') as f:
         return yaml.safe_load(f)
@@ -25,6 +27,8 @@ def load_config() -> dict:
 def save_config(config: dict):
     with open('config.yaml', 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
+    load_config.clear()
+    load_state.clear()
 
 
 def get_next_trigger() -> datetime:
