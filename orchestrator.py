@@ -117,8 +117,34 @@ def run_cycle():
         client.disconnect()
 
 
+def startup_check():
+    config = load_config()
+    client = MT5Client(config)
+    if not client.connect():
+        logger.error("Startup MT5 connection FAILED — is MetaTrader 5 terminal open and logged in?")
+        return False
+    try:
+        import MetaTrader5 as _mt5
+        info = _mt5.account_info()
+        logger.info("=" * 50)
+        logger.info("MT5 Connected successfully")
+        logger.info(f"  Account : {info.login}")
+        logger.info(f"  Name    : {info.name}")
+        logger.info(f"  Server  : {info.server}")
+        logger.info(f"  Mode    : {config['mt5']['mode'].upper()}")
+        logger.info(f"  Balance : {info.balance} {info.currency}")
+        logger.info(f"  Equity  : {info.equity} {info.currency}")
+        logger.info(f"  Assets  : {config['assets']}")
+        logger.info("=" * 50)
+    finally:
+        client.disconnect()
+    return True
+
+
 def main():
     logger.info("Orchestrator starting")
+    if not startup_check():
+        return
     scheduler = BlockingScheduler(timezone='UTC')
     scheduler.add_job(run_cycle, 'cron', minute='0,15,30,45')
     logger.info("Scheduler running — waiting for next :00/:15/:30/:45")
