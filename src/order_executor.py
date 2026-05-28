@@ -24,14 +24,14 @@ def validate_sl_tp(decision: TradeDecision, ask: float = 0, bid: float = 0) -> b
     entry = decision.entry if decision.entry else ref_price
 
     if 'BUY' in decision.order_type:
-        if decision.stop_loss and decision.stop_loss >= entry:
+        if decision.stop_loss is not None and decision.stop_loss >= entry:
             return False
-        if decision.take_profit and decision.take_profit <= entry:
+        if decision.take_profit is not None and decision.take_profit <= entry:
             return False
     elif 'SELL' in decision.order_type:
-        if decision.stop_loss and decision.stop_loss <= entry:
+        if decision.stop_loss is not None and decision.stop_loss <= entry:
             return False
-        if decision.take_profit and decision.take_profit >= entry:
+        if decision.take_profit is not None and decision.take_profit >= entry:
             return False
     return True
 
@@ -61,6 +61,21 @@ def execute_order(decision: TradeDecision, symbol: str, client, risk_config: dic
             decision.order_type, decision.entry, price['ask'], price['bid']
         ):
             return {'status': 'rejected', 'reason': f"Entry price invalid for {decision.order_type}"}
+
+    # Hard guard: reject if same-direction position already open
+    existing_positions = client.get_open_positions(symbol)
+    for pos in existing_positions:
+        if pos['type'] in decision.order_type or (pos['type'] == 'BUY' and 'BUY' in decision.order_type) or (pos['type'] == 'SELL' and 'SELL' in decision.order_type):
+            return {'status': 'rejected', 'reason': f"Duplicate: {pos['type']} position already open for {symbol}"}
+
+    # Hard guard: reject if same-direction pending order already exists
+    existing_pending = client.get_pending_orders(symbol)
+    for order in existing_pending:
+        if ('BUY' in order['type'] and 'BUY' in decision.order_type) or ('SELL' in order['type'] and 'SELL' in decision.order_type):
+            return {'status': 'rejected', 'reason': f"Duplicate: {order['type']} pending order already exists for {symbol}"}
+
+    if decision.stop_loss is None:
+        return {'status': 'rejected', 'reason': 'No stop_loss provided — order rejected'}
 
     entry_price = decision.entry or (price['ask'] if 'BUY' in decision.order_type else price['bid'])
     sl_distance = abs(entry_price - decision.stop_loss) if decision.stop_loss else 0

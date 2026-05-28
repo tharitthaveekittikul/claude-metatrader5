@@ -42,7 +42,7 @@ def _parse_float_or_none(field: str, raw: str) -> Optional[float]:
 
 
 def _parse_expiry(raw: str) -> Optional[float]:
-    val = _extract('EXPIRY', raw).upper()
+    val = _extract('EXPIRY', raw).upper().replace(' ', '')
     if val == 'N/A':
         return None
     match = re.match(r'^(\d+(?:\.\d+)?)H$', val)
