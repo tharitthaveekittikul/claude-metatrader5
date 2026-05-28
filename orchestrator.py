@@ -13,10 +13,15 @@ from src.order_executor import execute_order
 from src import state_manager
 
 os.makedirs('logs', exist_ok=True)
+
+_fmt = '%(asctime)s %(levelname)s %(message)s'
 logging.basicConfig(
-    filename='logs/trades.log',
     level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s',
+    format=_fmt,
+    handlers=[
+        logging.FileHandler('logs/trades.log'),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
