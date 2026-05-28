@@ -10,11 +10,14 @@ class MT5Client:
         self.config = config
 
     def connect(self) -> bool:
-        return mt5.initialize(
-            login=self.config['mt5']['login'],
-            password=self.config['mt5']['password'],
-            server=self.config['mt5']['server'],
-        )
+      kwargs = {
+          'login': self.config['mt5']['login'],
+          'password': self.config['mt5']['password'],
+          'server': self.config['mt5']['server'],
+      }
+      if 'path' in self.config['mt5']:
+          kwargs['path'] = self.config['mt5']['path']
+      return mt5.initialize(**kwargs)
 
     def disconnect(self):
         mt5.shutdown()
