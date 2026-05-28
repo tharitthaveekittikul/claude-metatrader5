@@ -18,15 +18,41 @@ def save_state(state: dict):
         json.dump(state, f, indent=2, default=str)
 
 
-def update_symbol_state(symbol: str, decision: dict, m15_candle_time: str, result: dict):
+def update_symbol_state(
+    symbol: str, decision: dict, m15_candle_time: str, result: dict,
+    usage: dict = None, prompt: str = None, response: str = None,
+):
     state = load_state()
+    now = datetime.now().isoformat()
     state['symbols'][symbol] = {
         'last_signal': decision,
         'm15_candle_time': m15_candle_time,
         'last_result': result,
-        'updated_at': datetime.now().isoformat(),
+        'last_usage': usage or {},
+        'last_prompt': prompt or '',
+        'last_response': response or '',
+        'updated_at': now,
     }
-    state['last_cycle'] = datetime.now().isoformat()
+    if usage:
+        totals = state.get('totals', {'cost_usd': 0.0, 'input_tokens': 0, 'output_tokens': 0, 'calls': 0})
+        totals['cost_usd']      += usage.get('cost_usd', 0.0)
+        totals['input_tokens']  += usage.get('input_tokens', 0)
+        totals['output_tokens'] += usage.get('output_tokens', 0)
+        totals['calls']         += 1
+        state['totals'] = totals
+        history = state.get('call_history', [])
+        history.append({
+            'time': now,
+            'symbol': symbol,
+            'decision': decision.get('order_type', ''),
+            'confidence': decision.get('confidence', ''),
+            'cost_usd': usage.get('cost_usd', 0.0),
+            'input_tokens': usage.get('input_tokens', 0),
+            'output_tokens': usage.get('output_tokens', 0),
+            'status': result.get('status', ''),
+        })
+        state['call_history'] = history[-200:]
+    state['last_cycle'] = now
     save_state(state)
 
 

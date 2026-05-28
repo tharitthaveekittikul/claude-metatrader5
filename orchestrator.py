@@ -1,8 +1,10 @@
 import logging
 import os
+import signal
+import time
 import yaml
 import MetaTrader5 as mt5
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from src.mt5_client import MT5Client
 from src.indicators import calculate_indicators, determine_trend_bias
@@ -75,9 +77,14 @@ def run_symbol(symbol: str, client: MT5Client, config: dict):
         )
 
         raw = call_claude(prompt, config['claude']['model'], config['claude']['timeout_seconds'])
-        decision = parse_response(raw)
+        decision = parse_response(raw['text'])
+        usage = {k: raw[k] for k in ('cost_usd', 'input_tokens', 'output_tokens')}
 
-        logger.info(f"{symbol}: {decision.order_type} CONF={decision.confidence} REASON={decision.reason}")
+        logger.info(
+            f"{symbol}: {decision.order_type} CONF={decision.confidence} "
+            f"tokens={usage['input_tokens']}in/{usage['output_tokens']}out "
+            f"cost=${usage['cost_usd']:.4f} REASON={decision.reason}"
+        )
 
         result = execute_order(decision, symbol, client, config['risk'], account)
         logger.info(f"{symbol}: result={result}")
@@ -95,6 +102,9 @@ def run_symbol(symbol: str, client: MT5Client, config: dict):
             },
             current_m15_time,
             result,
+            usage,
+            prompt=prompt,
+            response=raw['text'],
         )
 
     except Exception as e:
@@ -142,13 +152,21 @@ def startup_check():
 
 
 def main():
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     logger.info("Orchestrator starting")
     if not startup_check():
         return
-    scheduler = BlockingScheduler(timezone='UTC')
+    scheduler = BackgroundScheduler(timezone='UTC')
     scheduler.add_job(run_cycle, 'cron', minute='0,15,30,45')
-    logger.info("Scheduler running — waiting for next :00/:15/:30/:45")
     scheduler.start()
+    logger.info("Scheduler running — waiting for next :00/:15/:30/:45")
+    logger.info("Press Ctrl+C to stop")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Orchestrator stopped by user")
+        scheduler.shutdown(wait=False)
 
 
 if __name__ == '__main__':

@@ -7,6 +7,8 @@ import MetaTrader5 as mt5
 import streamlit as st
 import yaml
 
+from orchestrator import run_cycle
+
 st.set_page_config(page_title='Claude MT5 Bot', page_icon='📈', layout='wide')
 
 # ── CSS: only badges (outlined — work in light + dark) ───────────────────────
@@ -142,11 +144,44 @@ mins = int(remaining.seconds // 60)
 secs = int(remaining.seconds % 60)
 last_cycle = state.get('last_cycle')
 
-col1, col2, col3, col4 = st.columns(4)
+totals = state.get('totals', {})
+total_cost = totals.get('cost_usd', 0.0)
+total_calls = totals.get('calls', 0)
+call_history = state.get('call_history', [])
+
+col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
 col1.metric('⏱ Next Trigger In', f'{mins}m {secs}s')
 col2.metric('Mode', mode)
-col3.metric('Assets Configured', len(config['assets']))
+col3.metric('Assets', len(config['assets']))
 col4.metric('Last Cycle', str(last_cycle)[:16] if last_cycle else 'Never')
+col_cost, col_hist, col_run = st.columns([1, 3, 1])
+col_cost.metric('Total API Cost', f'${total_cost:.4f}', f'{total_calls} calls')
+if col_run.button('▶ Run Now', use_container_width=True, type='primary'):
+    with st.spinner('Running cycle — this may take ~30s…'):
+        run_cycle()
+    load_state.clear()
+    st.rerun()
+if call_history:
+    with col_hist.expander(f'View all {total_calls} calls'):
+        hist_rows = []
+        for c in reversed(call_history[-100:]):
+            hist_rows.append(f"""<tr>
+              <td style="color:#9ca3af">{c['time'][:16]}</td>
+              <td><strong>{c['symbol']}</strong></td>
+              <td>{decision_badge(c['decision'])}</td>
+              <td>{confidence_badge(c.get('confidence','—'))}</td>
+              <td>{execution_badge(c['status'])}</td>
+              <td>${c['cost_usd']:.4f}</td>
+              <td style="color:#9ca3af">{c['input_tokens']}in/{c['output_tokens']}out</td>
+            </tr>""")
+        st.markdown(f"""<table class="sig-table">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Decision</th><th>Conf</th>
+            <th>Status</th><th>Cost</th><th>Tokens</th>
+          </tr></thead>
+          <tbody>{''.join(hist_rows)}</tbody>
+        </table>""", unsafe_allow_html=True)
+
 
 st.divider()
 
@@ -174,14 +209,28 @@ else:
             save_config(config)
             st.rerun()
 
+if 'pending_remove' not in st.session_state:
+    st.session_state.pending_remove = None
+
 if assets:
     for asset in assets:
         c1, c2 = st.columns([6, 1])
         c1.markdown(f'**{asset}**')
         if c2.button('Remove', key=f'remove_{asset}'):
+            st.session_state.pending_remove = asset
+
+    if st.session_state.pending_remove:
+        asset = st.session_state.pending_remove
+        st.warning(f'Remove **{asset}** from trading? This stops it from being analysed next cycle.')
+        cc1, cc2, _ = st.columns([1, 1, 5])
+        if cc1.button('Yes, Remove', type='primary', key='confirm_remove'):
             assets.remove(asset)
             config['assets'] = assets
             save_config(config)
+            st.session_state.pending_remove = None
+            st.rerun()
+        if cc2.button('Cancel', key='cancel_remove'):
+            st.session_state.pending_remove = None
             st.rerun()
 else:
     st.caption('No assets configured.')
@@ -191,35 +240,65 @@ st.divider()
 # ── Last Signals ──────────────────────────────────────────────────────────────
 st.subheader('Last Signals')
 symbols_state = state.get('symbols', {})
-if symbols_state:
-    rows_html = []
-    for sym, data in symbols_state.items():
-        sig    = data.get('last_signal', {})
-        result = data.get('last_result', {})
-        entry  = sig.get('entry')
-        sl     = sig.get('stop_loss')
-        tp     = sig.get('take_profit')
-        rows_html.append(f"""
-        <tr>
-          <td><strong>{sym}</strong></td>
-          <td>{decision_badge(sig.get('order_type', '—'))}</td>
-          <td>{confidence_badge(sig.get('confidence', '—'))}</td>
-          <td>{f'{entry:.5f}' if isinstance(entry, float) else 'N/A'}</td>
-          <td>{f'{sl:.5f}'    if isinstance(sl,    float) else 'N/A'}</td>
-          <td>{f'{tp:.5f}'    if isinstance(tp,    float) else 'N/A'}</td>
-          <td>{execution_badge(result.get('status', '—'))}</td>
-          <td style="color:#9ca3af">{str(data.get('updated_at', '—'))[:16]}</td>
-        </tr>""")
 
-    st.markdown(f"""
-    <table class="sig-table">
-      <thead><tr>
-        <th>Symbol</th><th>Decision</th><th>Confidence</th>
-        <th>Entry</th><th>SL</th><th>TP</th>
-        <th>Execution</th><th>Updated</th>
-      </tr></thead>
-      <tbody>{''.join(rows_html)}</tbody>
-    </table>""", unsafe_allow_html=True)
+HDR = ['SYMBOL', 'DECISION', 'CONF', 'ENTRY', 'SL', 'TP', 'EXECUTION', 'COST', 'UPDATED']
+COLS = [2, 2, 1.5, 1.5, 1.5, 1.5, 1.5, 2, 2]
+
+if symbols_state:
+    hcols = st.columns(COLS)
+    for col, lbl in zip(hcols, HDR):
+        col.markdown(
+            f'<span style="font-size:11px;font-weight:700;color:#6b7280;'
+            f'letter-spacing:.07em">{lbl}</span>',
+            unsafe_allow_html=True,
+        )
+    st.markdown('<hr style="margin:4px 0;border-color:rgba(128,128,128,.2)">', unsafe_allow_html=True)
+
+    for sym, data in symbols_state.items():
+        sig     = data.get('last_signal', {})
+        result  = data.get('last_result', {})
+        usage   = data.get('last_usage', {})
+        entry   = sig.get('entry')
+        sl      = sig.get('stop_loss')
+        tp      = sig.get('take_profit')
+        cost    = usage.get('cost_usd')
+        tok_in  = usage.get('input_tokens', 0)
+        tok_out = usage.get('output_tokens', 0)
+
+        row = st.columns(COLS)
+        row[0].markdown(f'**{sym}**')
+        row[1].markdown(decision_badge(sig.get('order_type', '—')), unsafe_allow_html=True)
+        row[2].markdown(confidence_badge(sig.get('confidence', '—')), unsafe_allow_html=True)
+        row[3].write(f'{entry:.5f}' if isinstance(entry, float) else 'N/A')
+        row[4].write(f'{sl:.5f}'    if isinstance(sl,    float) else 'N/A')
+        row[5].write(f'{tp:.5f}'    if isinstance(tp,    float) else 'N/A')
+        row[6].markdown(execution_badge(result.get('status', '—')), unsafe_allow_html=True)
+        if cost is not None:
+            row[7].markdown(
+                f'`${cost:.4f}`<br><span style="font-size:11px;color:#9ca3af">'
+                f'{tok_in}in/{tok_out}out</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            row[7].write('—')
+        row[8].markdown(
+            f'<span style="color:#9ca3af">{str(data.get("updated_at","—"))[:16]}</span>',
+            unsafe_allow_html=True,
+        )
+
+        with st.expander(f'Details — {sym}'):
+            last_prompt   = data.get('last_prompt', '')
+            last_response = data.get('last_response', '')
+            reason = sig.get('reason', '')
+            if reason:
+                st.markdown(f'**Reason:** {reason}')
+            tab_in, tab_out = st.tabs(['Prompt (input)', 'Response (output)'])
+            with tab_in:
+                st.code(last_prompt or 'Not captured yet — restart bot', language='text')
+            with tab_out:
+                st.code(last_response or 'Not captured yet — restart bot', language='text')
+
+        st.markdown('<hr style="margin:2px 0;border-color:rgba(128,128,128,.08)">', unsafe_allow_html=True)
 else:
     st.info('No signals yet — waiting for first cycle.')
 

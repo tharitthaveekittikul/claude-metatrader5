@@ -96,6 +96,8 @@ class MT5Client:
             'type_time': mt5.ORDER_TIME_GTC, 'type_filling': mt5.ORDER_FILLING_IOC,
         }
         result = mt5.order_send(request)
+        if result is None:
+            raise ValueError(f"Market order failed: mt5.order_send returned None — {mt5.last_error()}")
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             raise ValueError(f"Market order failed: {result.retcode} {result.comment}")
         return {'order_id': result.order, 'retcode': result.retcode}
@@ -109,17 +111,16 @@ class MT5Client:
             'SELL LIMIT': mt5.ORDER_TYPE_SELL_LIMIT,
             'SELL STOP': mt5.ORDER_TYPE_SELL_STOP,
         }
-        expiry_time = datetime.now() + timedelta(hours=expiry_hours)
-
         request = {
             'action': mt5.TRADE_ACTION_PENDING,
             'symbol': symbol, 'volume': volume, 'type': type_map[order_type],
             'price': entry, 'sl': sl or 0.0, 'tp': tp or 0.0,
-            'expiration': expiry_time,
             'deviation': 20, 'magic': 234000, 'comment': 'claude-mt5',
-            'type_time': mt5.ORDER_TIME_SPECIFIED, 'type_filling': mt5.ORDER_FILLING_RETURN,
+            'type_time': mt5.ORDER_TIME_GTC, 'type_filling': mt5.ORDER_FILLING_RETURN,
         }
         result = mt5.order_send(request)
+        if result is None:
+            raise ValueError(f"Pending order failed: mt5.order_send returned None — {mt5.last_error()}")
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             raise ValueError(f"Pending order failed: {result.retcode} {result.comment}")
         return {'order_id': result.order, 'retcode': result.retcode}
