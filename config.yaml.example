@@ -1,0 +1,47 @@
+mt5:
+  login: 123456789
+  password: "your_password"
+  server: "BrokerName-Demo"
+  mode: demo  # demo | live
+  path: "C:\\Program Files\\MetaTrader 5_2\\terminal64.exe"
+
+assets:
+  - XAUUSD
+  - BTCUSD
+
+risk:
+  risk_per_trade_pct: 1.0
+  confidence_lot_multiplier:
+    HIGH: 1.0
+    MEDIUM: 0.5
+    LOW: 0.25
+  max_open_positions_per_symbol: 1
+  max_total_positions: 5
+  max_lot_hard_cap_pct: 5.0
+
+schedule:
+  interval_minutes: 15
+
+claude:
+  model: claude-sonnet-4-6
+  timeout_seconds: 60
+
+indicators:
+  h1:
+    ma_periods: [20, 50, 200]
+    rsi_period: 14
+    macd: [12, 26, 9]
+    atr_period: 14
+    bollinger: [20, 2]
+    candles_lookback: 250
+  m15:
+    ma_periods: [20, 50]
+    rsi_period: 14
+    macd: [12, 26, 9]
+    atr_period: 14
+    bollinger: [20, 2]
+    candles_lookback: 50
+
+trade_history:
+  max_trades: 5
+  lookback_hours: 24
