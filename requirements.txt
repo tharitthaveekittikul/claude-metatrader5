@@ -1,0 +1,8 @@
+metatrader-mcp-server
+pandas_ta
+pandas
+streamlit
+apscheduler
+pyyaml
+pytest
+numpy
